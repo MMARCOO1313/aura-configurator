@@ -101,7 +101,7 @@ const renderer = new THREE.WebGLRenderer({ antialias:true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 1.18;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 stage.appendChild(renderer.domElement);
@@ -170,10 +170,13 @@ loader.load('https://cdn.jsdelivr.net/gh/MMARCOO1313/aura-configurator@f0b4f8b40
         parts.push(o);
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const m of mats) {
-          m.envMapIntensity = 1.0;
-          // AI 生成嘅 normal map 帶大量噪點=近景凹凸瑕疵主源（2026-08-30 隔離實驗實錘）。
-          // 產品可視化直接關掉：baseColor+metallicRoughness 已足夠,表面乾淨先似新品。
+          // 2026-08-30 材質調校配方（隔離實驗定案）:
+          // (1) AI normal map 噪點=凹凸瑕疵主源 → 關;
+          // (2) AI roughness 偏低=油漆感、金屬被壓黑 → roughness ×1.4 + env 1.2 + 曝光 1.18,
+          //     銀灰金屬先渲染得返出嚟(MR 貼圖嘅金屬區域標記本身係啱嘅,唔好丟)。
           m.normalMap = null;
+          m.roughness = Math.min(1.5, (m.roughness ?? 1) * 1.4);
+          m.envMapIntensity = 1.2;
           m.needsUpdate = true;
           baseMats.push(m);
         }
