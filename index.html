@@ -169,7 +169,14 @@ loader.load('https://cdn.jsdelivr.net/gh/MMARCOO1313/aura-configurator@f0b4f8b40
         o.castShadow = true;
         parts.push(o);
         const mats = Array.isArray(o.material) ? o.material : [o.material];
-        for (const m of mats) { m.envMapIntensity = 1.0; baseMats.push(m); }
+        for (const m of mats) {
+          m.envMapIntensity = 1.0;
+          // AI 生成嘅 normal map 帶大量噪點=近景凹凸瑕疵主源（2026-08-30 隔離實驗實錘）。
+          // 產品可視化直接關掉：baseColor+metallicRoughness 已足夠,表面乾淨先似新品。
+          m.normalMap = null;
+          m.needsUpdate = true;
+          baseMats.push(m);
+        }
       }
     });
     scene.add(product);
