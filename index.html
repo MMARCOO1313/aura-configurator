@@ -133,11 +133,13 @@ floor.rotation.x = -Math.PI/2; floor.receiveShadow = true;
 scene.add(floor);
 
 // ── product: Meshy-generated GLB（AI 生成生產級模型；程式碼只做載入/變體/交互）──
+// Finish＝只換金屬區域嘅顏色（metalnessMap 遮罩+shader lerp——lerp 先可以「變亮」;
+// multiply tint 永遠變唔到銀色仲會污染皮革;override 粗糙度會變黑鏡。2026-08-30 定案。
 const FINISHES = {
-  Graphite: { tint:0xffffff, mR:[null,null],  price:0,  chip:'#3a3a40' },
-  Silver:   { tint:0xd9dde2, mR:[1.0,.32],    price:15, chip:'#c9ccd2' },
-  Navy:     { tint:0x2e4470, mR:[.7,.45],     price:10, chip:'#1f2c46' },
-  Sand:     { tint:0xd9c49e, mR:[.35,.6],     price:10, chip:'#cbb99a' },
+  Graphite: { tint:0x3a3a40, s:0,   price:0,  chip:'#3a3a40' },
+  Silver:   { tint:0xc9ced6, s:.85, price:15, chip:'#c9ccd2' },
+  Navy:     { tint:0x2c3e66, s:.8,  price:10, chip:'#1f2c46' },
+  Bronze:   { tint:0x8a6a42, s:.8,  price:10, chip:'#a5885f' },
 };
 const BASE_PRICE = 299;
 const state = { finish:'Graphite' };
@@ -177,6 +179,17 @@ loader.load('https://cdn.jsdelivr.net/gh/MMARCOO1313/aura-configurator@f0b4f8b40
           m.normalMap = null;
           m.roughness = Math.min(1.5, (m.roughness ?? 1) * 1.4);
           m.envMapIntensity = 1.2;
+          // Finish shader hook:metalnessFactor 做遮罩,只對金屬區域 lerp 換色
+          m.userData.uTint = { value: new THREE.Color(0xffffff) };
+          m.userData.uTintS = { value: 0 };
+          m.onBeforeCompile = (sh) => {
+            sh.uniforms.uTint = m.userData.uTint;
+            sh.uniforms.uTintS = m.userData.uTintS;
+            sh.fragmentShader = sh.fragmentShader
+              .replace('void main() {', 'uniform vec3 uTint;\nuniform float uTintS;\nvoid main() {')
+              .replace('#include <metalnessmap_fragment>',
+                '#include <metalnessmap_fragment>\n\tdiffuseColor.rgb = mix(diffuseColor.rgb, uTint, uTintS * metalnessFactor);');
+          };
           m.needsUpdate = true;
           baseMats.push(m);
         }
@@ -201,14 +214,7 @@ function setFinish(name) {
   const f = FINISHES[name];
   state.finish = name;
   for (const m of baseMats) {
-    if (m.color) m.color.set(f.tint);
-    if (f.mR[0] !== null && 'metalness' in m) m.metalness = f.mR[0];
-    if (f.mR[1] !== null && 'roughness' in m) m.roughness = f.mR[1];
-    if (name === 'Graphite') { // 還原原生 PBR 值
-      if ('metalness' in m && m.userData._m0 !== undefined) m.metalness = m.userData._m0;
-      if ('roughness' in m && m.userData._r0 !== undefined) m.roughness = m.userData._r0;
-    }
-    if (m.userData._m0 === undefined) { m.userData._m0 = m.metalness; m.userData._r0 = m.roughness; }
+    if (m.userData.uTint) { m.userData.uTint.value.set(f.tint); m.userData.uTintS.value = f.s; }
   }
   updatePrice();
 }
