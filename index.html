@@ -144,11 +144,11 @@ const state = { finish:'Graphite' };
 let product = null, parts = [], baseMats = [], bbox = null, dims = null;
 
 const lbar = document.getElementById('lbar');
-// Meshy 原檔 18.9MB → Draco+1K WebP 壓到 351KB（54x）——載入管線本身就是賣點
+// Meshy 原檔 18.9MB → Draco+2K WebP 壓到 668KB（28x）——載入管線本身就是賣點
 const draco = new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/');
 const loader = new GLTFLoader();
 loader.setDRACOLoader(draco);
-loader.load('https://cdn.jsdelivr.net/gh/MMARCOO1313/aura-configurator@main/aura.glb',
+loader.load('https://cdn.jsdelivr.net/gh/MMARCOO1313/aura-configurator@f0b4f8b4055102c905d4b88b5b70aa153bb70ceb/aura.glb',
   (gltf) => {
     product = gltf.scene;
     // normalize: center, sit on floor, height ≈ 2 units
