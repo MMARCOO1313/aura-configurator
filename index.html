@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>AURA ONE — Real-Time Product Configurator</title>
+<style>
+  :root { --ink:#101014; --paper:#f4f2ee; --line:#d8d4cc; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:var(--paper); color:var(--ink);
+    font-family:"Helvetica Neue",Helvetica,Arial,sans-serif; }
+  #stage { position:fixed; inset:0; touch-action:none; }
+  canvas { display:block; }
+  header { position:fixed; top:0; left:0; right:0; padding:18px 24px; display:flex;
+    justify-content:space-between; align-items:center; pointer-events:none; z-index:5; }
+  .brand { font-size:14px; letter-spacing:.34em; font-weight:700; }
+  .fps { font-size:10px; letter-spacing:.12em; color:#8a867e; font-variant-numeric:tabular-nums; }
+  #loader { position:fixed; inset:0; display:flex; flex-direction:column; gap:14px; align-items:center;
+    justify-content:center; background:var(--paper); z-index:20; transition:opacity .5s; }
+  #loader.done { opacity:0; pointer-events:none; }
+  #loader .bar { width:220px; height:2px; background:#ddd8d0; }
+  #loader .bar i { display:block; height:100%; width:0%; background:var(--ink); transition:width .2s; }
+  #loader .t { font-size:11px; letter-spacing:.3em; color:#8a867e; }
+
+  #panel { position:fixed; right:24px; top:50%; transform:translateY(-50%); width:270px;
+    background:rgba(255,255,255,.82); backdrop-filter:blur(14px); border:1px solid var(--line);
+    border-radius:14px; padding:20px; z-index:6; }
+  #panel h1 { font-size:19px; }
+  #panel .price { font-family:Georgia,serif; font-size:24px; margin:2px 0 14px; }
+  .group { margin-bottom:14px; }
+  .group .label { font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:#8a867e; margin-bottom:7px; }
+  .swatches { display:flex; gap:8px; }
+  .sw { width:30px; height:30px; border-radius:50%; cursor:pointer; border:2px solid transparent;
+    outline:1px solid var(--line); outline-offset:2px; transition:transform .15s; }
+  .sw:hover { transform:scale(1.12); }
+  .sw.on { outline:2px solid var(--ink); }
+  .views { display:flex; gap:6px; flex-wrap:wrap; }
+  .vbtn, #explode, #cart { font:600 11px/1 "Helvetica Neue",sans-serif; letter-spacing:.08em;
+    padding:8px 11px; border:1px solid var(--line); background:#fff; border-radius:8px; cursor:pointer; }
+  .vbtn.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+  #explode { width:100%; margin-top:2px; }
+  #cart { width:100%; margin-top:10px; background:var(--ink); color:#fff; border-color:var(--ink);
+    padding:12px; font-size:12px; }
+  #cart:active { transform:translateY(1px); }
+  .hotspot { position:fixed; z-index:4; transform:translate(-50%,-50%); pointer-events:none; }
+  .hotspot .dot { width:9px; height:9px; border-radius:50%; background:var(--ink); margin:0 auto;
+    box-shadow:0 0 0 4px rgba(16,16,20,.14); }
+  .hotspot .tip { margin-top:7px; background:#fff; border:1px solid var(--line); border-radius:7px;
+    padding:5px 9px; font-size:10.5px; letter-spacing:.04em; white-space:nowrap; }
+  #payload { position:fixed; left:24px; bottom:24px; width:300px; background:#101014; color:#cfe8cf;
+    font:11px/1.55 ui-monospace,Menlo,monospace; border-radius:12px; padding:14px 16px; z-index:7;
+    display:none; white-space:pre; overflow:auto; max-height:44vh; }
+  #payload b { color:#fff; }
+  footer { position:fixed; left:24px; bottom:20px; font-size:10px; letter-spacing:.1em;
+    color:#8a867e; z-index:3; text-transform:uppercase; }
+  @media (max-width:720px) {
+    #panel { right:0; left:0; top:auto; bottom:0; transform:none; width:100%;
+      border-radius:16px 16px 0 0; padding:14px 16px 18px; }
+    footer { display:none; }
+    #payload { left:12px; right:12px; width:auto; bottom:12px; }
+  }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="loader"><div class="t">AURA&nbsp;ONE</div><div class="bar"><i id="lbar"></i></div></div>
+<header>
+  <div class="brand">AURA&nbsp;ONE</div>
+  <div class="fps" id="fps">— fps</div>
+</header>
+
+<div id="panel">
+  <h1>Aura One Headphones</h1>
+  <div class="price" id="price">$299</div>
+  <div class="group"><div class="label">Finish</div><div class="swatches" id="sw-finish"></div></div>
+  <div class="group"><div class="label">Camera</div><div class="views" id="views"></div></div>
+  <button id="explode">EXPLODED VIEW</button>
+  <button id="cart">ADD TO CART</button>
+</div>
+
+<div class="hotspot" id="hs1"><div class="dot"></div><div class="tip">40 mm beryllium driver</div></div>
+<div class="hotspot" id="hs2"><div class="dot"></div><div class="tip">Memory-foam cushion · replaceable</div></div>
+<div id="payload"></div>
+<footer>Real-time configurator · AI-generated production model (Meshy) · Three.js · variant mapping — Marco C.</footer>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf4f2ee);
+scene.fog = new THREE.Fog(0xf4f2ee, 9, 18);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const camera = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, .1, 60);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = .07;
+controls.maxPolarAngle = Math.PI * .62;
+controls.autoRotate = true; controls.autoRotateSpeed = .55;
+controls.addEventListener('start', () => controls.autoRotate = false);
+
+const key = new THREE.DirectionalLight(0xffffff, 1.5);
+key.position.set(4, 7, 3);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.left = key.shadow.camera.bottom = -3;
+key.shadow.camera.right = key.shadow.camera.top = 3;
+key.shadow.radius = 6;
+scene.add(key);
+
+const floor = new THREE.Mesh(new THREE.CircleGeometry(8, 64), new THREE.ShadowMaterial({ opacity:.16 }));
+floor.rotation.x = -Math.PI/2; floor.receiveShadow = true;
+scene.add(floor);
+
+// ── product: Meshy-generated GLB（AI 生成生產級模型；程式碼只做載入/變體/交互）──
+const FINISHES = {
+  Graphite: { tint:0xffffff, mR:[null,null],  price:0,  chip:'#3a3a40' },
+  Silver:   { tint:0xd9dde2, mR:[1.0,.32],    price:15, chip:'#c9ccd2' },
+  Navy:     { tint:0x2e4470, mR:[.7,.45],     price:10, chip:'#1f2c46' },
+  Sand:     { tint:0xd9c49e, mR:[.35,.6],     price:10, chip:'#cbb99a' },
+};
+const BASE_PRICE = 299;
+const state = { finish:'Graphite' };
+let product = null, parts = [], baseMats = [], bbox = null, dims = null;
+
+const lbar = document.getElementById('lbar');
+// Meshy 原檔 18.9MB → Draco+1K WebP 壓到 351KB（54x）——載入管線本身就是賣點
+const draco = new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/');
+const loader = new GLTFLoader();
+loader.setDRACOLoader(draco);
+loader.load('https://cdn.jsdelivr.net/gh/MMARCOO1313/aura-configurator@main/aura.glb',
+  (gltf) => {
+    product = gltf.scene;
+    // normalize: center, sit on floor, height ≈ 2 units
+    const b = new THREE.Box3().setFromObject(product);
+    const size = b.getSize(new THREE.Vector3());
+    const scale = 2 / Math.max(size.x, size.y, size.z);
+    product.scale.setScalar(scale);
+    b.setFromObject(product);
+    const c = b.getCenter(new THREE.Vector3());
+    product.position.sub(c);            // 置中
+    b.setFromObject(product);
+    product.position.y -= b.min.y;      // 落地
+    bbox = new THREE.Box3().setFromObject(product);
+    dims = bbox.getSize(new THREE.Vector3());
+
+    product.traverse((o) => {
+      if (o.isMesh) {
+        o.castShadow = true;
+        parts.push(o);
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) { m.envMapIntensity = 1.0; baseMats.push(m); }
+      }
+    });
+    scene.add(product);
+    buildViews();
+    placeAnchors();
+    setFinish('Graphite');
+    if (parts.length < 3) { // 單網格模型：爆炸視圖無意義,換成 X-ray
+      const eb = document.getElementById('explode');
+      eb.textContent = 'X-RAY VIEW';
+    }
+    document.getElementById('loader').classList.add('done');
+  },
+  (ev) => { if (ev.total) lbar.style.width = Math.round(ev.loaded/ev.total*100) + '%'; },
+  (err) => { document.querySelector('#loader .t').textContent = 'FAILED TO LOAD MODEL'; console.error(err); }
+);
+
+// ── finishes（保留 Meshy PBR 貼圖,以色調+金屬度變體疊加）────────────────────
+function setFinish(name) {
+  const f = FINISHES[name];
+  state.finish = name;
+  for (const m of baseMats) {
+    if (m.color) m.color.set(f.tint);
+    if (f.mR[0] !== null && 'metalness' in m) m.metalness = f.mR[0];
+    if (f.mR[1] !== null && 'roughness' in m) m.roughness = f.mR[1];
+    if (name === 'Graphite') { // 還原原生 PBR 值
+      if ('metalness' in m && m.userData._m0 !== undefined) m.metalness = m.userData._m0;
+      if ('roughness' in m && m.userData._r0 !== undefined) m.roughness = m.userData._r0;
+    }
+    if (m.userData._m0 === undefined) { m.userData._m0 = m.metalness; m.userData._r0 = m.roughness; }
+  }
+  updatePrice();
+}
+const swRoot = document.getElementById('sw-finish');
+for (const [name, f] of Object.entries(FINISHES)) {
+  const b = document.createElement('button');
+  b.className = 'sw' + (name === 'Graphite' ? ' on' : '');
+  b.style.background = f.chip; b.title = name;
+  b.onclick = () => {
+    swRoot.querySelectorAll('.sw').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    setFinish(name);
+  };
+  swRoot.appendChild(b);
+}
+function total() { return BASE_PRICE + FINISHES[state.finish].price; }
+function updatePrice() { document.getElementById('price').textContent = '$' + total(); }
+
+// ── camera choreography（依 bbox 計算,模型換咗都啱）─────────────────────────
+let VIEWS = {};
+function buildViews() {
+  const h = dims.y, cy = h * .55, d = Math.max(dims.x, dims.y) * 2.6;
+  VIEWS = {
+    Hero:   { pos:[d*.26, h*.75, d],      tgt:[0, cy, 0] },
+    Side:   { pos:[d, h*.65, d*.05],      tgt:[0, cy, 0] },
+    Detail: { pos:[d*.38, cy, d*.34],     tgt:[dims.x*.32, cy, 0] },
+    Top:    { pos:[d*.1, h*2.4, d*.2],    tgt:[0, cy*.9, 0] },
+  };
+  camera.position.set(...VIEWS.Hero.pos);
+  controls.target.set(...VIEWS.Hero.tgt);
+  const root = document.getElementById('views');
+  root.innerHTML = '';
+  for (const name of Object.keys(VIEWS)) {
+    const b = document.createElement('button');
+    b.className = 'vbtn' + (name === 'Hero' ? ' on' : '');
+    b.textContent = name.toUpperCase();
+    b.onclick = () => {
+      root.querySelectorAll('.vbtn').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      flyTo(VIEWS[name]);
+    };
+    root.appendChild(b);
+  }
+}
+let tween = null;
+const easeInOut = t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2;
+function flyTo(v, ms = 1300) {
+  controls.autoRotate = false;
+  tween = { t0:performance.now(), ms,
+    p0:camera.position.clone(), p1:new THREE.Vector3(...v.pos),
+    c0:controls.target.clone(), c1:new THREE.Vector3(...v.tgt) };
+}
+
+// ── exploded view / X-ray ──────────────────────────────────────────────────
+let exploded = false, explodeT = 0;
+const homes = new Map();
+document.getElementById('explode').onclick = (e) => {
+  exploded = !exploded;
+  if (parts.length >= 3) {
+    e.target.textContent = exploded ? 'ASSEMBLE' : 'EXPLODED VIEW';
+    if (exploded && homes.size === 0) {
+      const center = bbox.getCenter(new THREE.Vector3());
+      for (const p of parts) {
+        const pb = new THREE.Box3().setFromObject(p);
+        const pc = pb.getCenter(new THREE.Vector3());
+        const dir = pc.clone().sub(center); dir.y = Math.abs(dir.y) * .4;
+        if (dir.lengthSq() < 1e-6) dir.set(0, .5, 0);
+        homes.set(p, { home:p.position.clone(), out:dir.normalize().multiplyScalar(dims.y * .35) });
+      }
+    }
+  } else { // X-ray：半透明睇內部
+    e.target.textContent = exploded ? 'SOLID VIEW' : 'X-RAY VIEW';
+    for (const m of baseMats) { m.transparent = exploded; m.opacity = exploded ? .45 : 1; m.needsUpdate = true; }
+  }
+};
+
+// ── cart payload ───────────────────────────────────────────────────────────
+const payload = document.getElementById('payload');
+document.getElementById('cart').onclick = () => {
+  const sku = `AURA1-${state.finish.slice(0,3).toUpperCase()}`;
+  const body = { items: [{ id:'/* variant id resolved from options */', sku, quantity:1,
+    properties:{ Finish: state.finish, _config_url: location.href + '#' + btoa(JSON.stringify(state)) },
+    price: total() * 100 }] };
+  payload.style.display = payload.style.display === 'block' ? 'none' : 'block';
+  payload.innerHTML = '<b>POST /cart/add.js</b>  — exact configuration → line item\n\n'
+    + JSON.stringify(body, null, 2).replace(/"(\/\*.*?\*\/)"/, '$1');
+};
+
+// ── hotspots（依 bbox 錨定）─────────────────────────────────────────────────
+let anchors = [];
+function placeAnchors() {
+  anchors = [
+    { el:document.getElementById('hs1'), p:new THREE.Vector3(dims.x*.42, dims.y*.42, 0) },
+    { el:document.getElementById('hs2'), p:new THREE.Vector3(-dims.x*.34, dims.y*.45, dims.z*.2) },
+  ];
+}
+const proj = new THREE.Vector3();
+function drawHotspots() {
+  for (const h of anchors) {
+    proj.copy(h.p).project(camera);
+    const hide = proj.z > 1 || exploded;
+    h.el.style.display = hide ? 'none' : 'block';
+    h.el.style.left = ((proj.x*.5+.5) * innerWidth) + 'px';
+    h.el.style.top = ((-proj.y*.5+.5) * innerHeight) + 'px';
+  }
+}
+
+// ── loop ───────────────────────────────────────────────────────────────────
+const fpsEl = document.getElementById('fps');
+let ema = 60, last = performance.now(), tick = 0;
+renderer.setAnimationLoop((now) => {
+  const dt = now - last; last = now;
+  ema = ema*.95 + (1000/Math.max(dt,.1))*.05;
+  if (++tick % 30 === 0) fpsEl.textContent = Math.round(ema) + ' fps · ' + renderer.info.render.calls + ' draw calls';
+  if (tween) {
+    const k = Math.min(1, (now - tween.t0)/tween.ms), e = easeInOut(k);
+    camera.position.lerpVectors(tween.p0, tween.p1, e);
+    controls.target.lerpVectors(tween.c0, tween.c1, e);
+    if (k >= 1) tween = null;
+  }
+  if (parts.length >= 3 && homes.size) {
+    explodeT += ((exploded ? 1 : 0) - explodeT) * .07;
+    for (const [p, h] of homes) p.position.copy(h.home).addScaledVector(h.out, explodeT);
+  }
+  controls.update();
+  if (product) drawHotspots();
+  renderer.render(scene, camera);
+});
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
